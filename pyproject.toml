@@ -1,0 +1,20 @@
+[project]
+name = "arc-agi-dataloader"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+arc-agi-dataloader = "arc_agi_dataloader.__main__:main"
+
+[build-system]
+requires = ["hatchling>=1.24.2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["externals/**"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["arc_agi_dataloader"]
