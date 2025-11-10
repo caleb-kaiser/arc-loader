@@ -29,6 +29,8 @@ def _default_data_root() -> Path:
     return dev_candidate
 
 def load_dataset(data_dir: Path | None = None, split: str = "training") -> list[EpisodicGridSample]:
+    if type(data_dir) == str:
+        data_dir = Path(data_dir)
     base_dir = data_dir if data_dir is not None else _default_data_root()
     if split == "training":
         files = load_filenames(base_dir / "training")
