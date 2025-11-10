@@ -1,7 +1,10 @@
 from pathlib import Path
 import os
 import json
+from typing import List
+import numpy as np
 from .classes import GridSample, EpisodicGridSample
+from .augment import dihedral_transform, get_permutation_grid
 
 def load_filenames(data_dir: Path) -> list[Path]:
     training_files = list(data_dir.glob("*.json"))
@@ -28,7 +31,65 @@ def _default_data_root() -> Path:
     dev_candidate = package_dir.parent / "externals" / "ARC-AGI" / "data"
     return dev_candidate
 
-def load_dataset(data_dir: Path | None = None, split: str = "training") -> list[EpisodicGridSample]:
+def _apply_dihedral_to_grid(grid: List[List[int]], transform_id: int) -> List[List[int]]:
+    arr = np.asarray(grid, dtype=np.uint8)
+    transformed = dihedral_transform(arr, transform_id)
+    return transformed.tolist()
+
+def _augment_episode_by_tid(episode: EpisodicGridSample, transform_id: int) -> EpisodicGridSample:
+    augmented_train = [
+        GridSample(
+            input=_apply_dihedral_to_grid(sample.input, transform_id),
+            output=_apply_dihedral_to_grid(sample.output, transform_id),
+        )
+        for sample in episode.train
+    ]
+    augmented_test = [
+        GridSample(
+            input=_apply_dihedral_to_grid(sample.input, transform_id),
+            output=_apply_dihedral_to_grid(sample.output, transform_id),
+        )
+        for sample in episode.test
+    ]
+    return EpisodicGridSample(train=augmented_train, test=augmented_test)
+
+def _augment_episode_all(episode: EpisodicGridSample) -> list[EpisodicGridSample]:
+    # Generate seven additional augmented puzzles (exclude identity transform 0)
+    return [_augment_episode_by_tid(episode, tid) for tid in range(1, 8)]
+
+def _apply_color_permutation_to_grid(grid: List[List[int]], mapping: np.ndarray) -> List[List[int]]:
+    arr = np.asarray(grid, dtype=np.uint8)
+    result = arr.copy()
+    max_idx = mapping.shape[0]
+    mask = arr < max_idx
+    result[mask] = mapping[arr[mask]]
+    return result.tolist()
+
+def _augment_episode_with_color_permutation(episode: EpisodicGridSample, mapping: np.ndarray) -> EpisodicGridSample:
+    augmented_train = [
+        GridSample(
+            input=_apply_color_permutation_to_grid(sample.input, mapping),
+            output=_apply_color_permutation_to_grid(sample.output, mapping),
+        )
+        for sample in episode.train
+    ]
+    augmented_test = [
+        GridSample(
+            input=_apply_color_permutation_to_grid(sample.input, mapping),
+            output=_apply_color_permutation_to_grid(sample.output, mapping),
+        )
+        for sample in episode.test
+    ]
+    return EpisodicGridSample(train=augmented_train, test=augmented_test)
+
+def _augment_episode_colors(episode: EpisodicGridSample, num_permutations: int) -> list[EpisodicGridSample]:
+    augmented: list[EpisodicGridSample] = []
+    for _ in range(num_permutations):
+        mapping = get_permutation_grid()
+        augmented.append(_augment_episode_with_color_permutation(episode, mapping))
+    return augmented
+
+def load_dataset(data_dir: Path | None = None, split: str = "training", augment: bool = True, color_permutations: int = 1) -> list[EpisodicGridSample]:
     if type(data_dir) == str:
         data_dir = Path(data_dir)
     base_dir = data_dir if data_dir is not None else _default_data_root()
@@ -38,6 +99,14 @@ def load_dataset(data_dir: Path | None = None, split: str = "training") -> list[
         files = load_filenames(base_dir / "evaluation")
     else:
         raise ValueError(f"Invalid split: {split}")
-    return [load_data(file) for file in files]
+    episodes: list[EpisodicGridSample] = []
+    for file in files:
+        episode = load_data(file)
+        episodes.append(episode)
+        if augment:
+            episodes.extend(_augment_episode_all(episode))
+        if color_permutations and color_permutations > 0:
+            episodes.extend(_augment_episode_colors(episode, color_permutations))
+    return episodes
 
 
