@@ -89,6 +89,21 @@ def _augment_episode_colors(episode: EpisodicGridSample, num_permutations: int) 
         augmented.append(_augment_episode_with_color_permutation(episode, mapping))
     return augmented
 
+def _augment_episode_dihedral_and_colors(episode: EpisodicGridSample, color_permutations: int, include_dihedral_plain: bool) -> list[EpisodicGridSample]:
+    augmented: list[EpisodicGridSample] = []
+    for tid in range(0, 8):
+        # Apply dihedral transform (identity for tid=0)
+        dihedral_episode = episode if tid == 0 else _augment_episode_by_tid(episode, tid)
+        # Optionally include the dihedral-only episode (avoid duplicating identity)
+        if include_dihedral_plain and tid != 0:
+            augmented.append(dihedral_episode)
+        # Apply N color permutations to this dihedral orientation
+        if color_permutations and color_permutations > 0:
+            for _ in range(color_permutations):
+                mapping = get_permutation_grid()
+                augmented.append(_augment_episode_with_color_permutation(dihedral_episode, mapping))
+    return augmented
+
 def load_dataset(data_dir: Path | None = None, split: str = "training", augment: bool = True, color_permutations: int = 1) -> list[EpisodicGridSample]:
     if type(data_dir) == str:
         data_dir = Path(data_dir)
@@ -104,9 +119,12 @@ def load_dataset(data_dir: Path | None = None, split: str = "training", augment:
         episode = load_data(file)
         episodes.append(episode)
         if augment:
-            episodes.extend(_augment_episode_all(episode))
-        if color_permutations and color_permutations > 0:
-            episodes.extend(_augment_episode_colors(episode, color_permutations))
+            # For maximum coverage: include dihedral-only (tid 1..7) and color permutations for all tids (0..7)
+            episodes.extend(_augment_episode_dihedral_and_colors(episode, color_permutations, include_dihedral_plain=True))
+        else:
+            # No dihedral transforms; only color permutations on the original orientation
+            if color_permutations and color_permutations > 0:
+                episodes.extend(_augment_episode_colors(episode, color_permutations))
     return episodes
 
 
